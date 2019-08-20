@@ -72,13 +72,12 @@ bool PID::Compute()
 
     outputSum += (ki * error);
 
-    double iClamp = 0.2;
+    double iClamp = 0.05;
     if (abs(error) > iClamp) {
       outputSum = 0;
     }
 
-    //double iThresh = 0.14;
-    double iThresh = 0.30;
+    double iThresh = 0.14;
     if (outputSum > iThresh) {
       outputSum = iThresh;
     } else if (outputSum < -iThresh) {
@@ -94,7 +93,7 @@ bool PID::Compute()
     output = kp * error;
     output += outputSum;
     output -= derivative;
- /*
+/*    
     Serial.print(input);
     Serial.print(", ");
     Serial.print(setpoint);

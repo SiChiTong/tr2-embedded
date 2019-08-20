@@ -1,9 +1,6 @@
 #include <Arduino.h>
 #include "ems22a.h"
 
-#define PI 3.1415926535897932384626433832795
-#define TAU (PI * 2)
-
 Ems22a::Ems22a() {
 }
 
@@ -29,7 +26,6 @@ void Ems22a::setUp() {
   digitalWrite(PIN_CS, LOW);
   
   readPosition();
-  readPosition();
 }
 
 void Ems22a::setOffset(uint16_t pos) {
@@ -39,7 +35,7 @@ void Ems22a::setOffset(uint16_t pos) {
   offset = pos;
 }
 
-int Ems22a::readPosition() {
+int Ems22a::readPosition(bool noOffset) {
   digitalWrite(PIN_CS, HIGH);
   digitalWrite(PIN_CS, LOW);
   int pos = 0;
@@ -59,13 +55,20 @@ int Ems22a::readPosition() {
   digitalWrite(PIN_CLOCK, LOW);
   digitalWrite(PIN_CLOCK, HIGH);
 
+  if (noOffset == true) {
+    return pos;
+  }
+  
+  pos -= offset;
+  
+  if (pos < 0) pos += encoderResolution;
+  else if (pos > encoderResolution) pos -= encoderResolution;
+
   // set previous positions
   for (int i = prevPositionN - 1; i > 0; i--) {
     prevPosition[i] = prevPosition[i - 1];
   }
   prevPosition[0] = pos;
-
-  handleLapChange();
   
   return pos;
 }
@@ -76,45 +79,6 @@ int Ems22a::getOffset() {
 
 int Ems22a::getLap() {
   return lapNumber;
-}
-
-void Ems22a::setEqualTo(float posSet) {  
-  int encRead = prevPosition[0];
-  float posCur = (float)encRead / (encoderResolution * maxLap) * TAU;
-  float posDif = fabs(posSet - posCur);
-  
-  float lap = floor(posDif / TAU * maxLap) + 1;
-  posCur = (((encoderResolution * lap) + encRead) / (encoderResolution * maxLap)) * TAU;
-  posDif = fabs(posSet - posCur);
-  
-  int offset = floor(posDif / TAU * encoderResolution * maxLap);
-  
-  int recCount = 0;
-  while (offset > encoderResolution && recCount < 10) {
-      recCount++;
-      if (offset > encoderResolution) {
-          lap -= 1;
-          offset -= encoderResolution;
-      }
-  }
-  
-  if (lap >= maxLap) {
-      lap -= maxLap;
-  }
-
-  Serial.print(offset);
-  Serial.print(", ");
-  Serial.println(lap);
-
-  setOffset(offset);
-  setLap(lap);
-  
-  readPosition();
-  readPosition();
-}
-
-int Ems22a::getMaxResolution() {
-  return encoderResolution * maxLap;
 }
 
 void Ems22a::setMaxLap(uint8_t i) {
@@ -147,22 +111,14 @@ void Ems22a::changeLap(int i) {
 }
 
 float Ems22a::getAngleRadians() {
-  float encRead = prevPosition[0];
-  float pos = (encoderResolution * lapNumber) + encRead - offset;
-  float maxPos = encoderResolution * maxLap;
-  float r = pos / maxPos * TAU;
-
-  int recCount = 0;
-  while ((r < 0 || r > TAU) && recCount < 10) {
-    recCount++;
-    if (r < 0) {
-      r += TAU;
-    } else if (r > TAU) {
-      r -= TAU;
-    }
+  float pos = prevPosition[0] + (lapNumber * encoderResolution);
+  
+  if (maxLap <= 1) {
+    pos = prevPosition[0];
   }
   
-  return r;
+  float maxPos = maxLap * encoderResolution;
+  return PI * 2.0 *  pos / maxPos;
 }
 
 int Ems22a::getPosition() {
@@ -173,28 +129,21 @@ int Ems22a::getPosition() {
   return prevPosition[0] + (lapNumber * encoderResolution);
 }
 
-void Ems22a::handleLapChange() {
+int Ems22a::step() {
+  readPosition();
+
   if (maxLap <= 1) {
-    return;
+    return prevPosition[0];
   }
 
-  int posCur = prevPosition[0];
-  int posPrv = prevPosition[1];
-  int posTHi = encoderResolution - 75;
-  int posTLo = 75;
+  bool read1Small = prevPosition[0] < encoderResolution / 2.0;
+  bool read2Small = prevPosition[1] < encoderResolution / 2.0;
 
-  bool posCurHi = posCur >= posTHi;
-  bool posCurLo = posCur <= posTLo;
-  bool posPrvHi = posPrv >= posTHi;
-  bool posPrvLo = posPrv <= posTLo;
-
-  if (posCurLo && posPrvHi) {
+  if (prevPosition[1] > 950 && (read1Small && !read2Small)) {
     changeLap(1);
-  } else if (posPrvLo && posCurHi) {
+  } else if (prevPosition[0] > 950 && (!read1Small && read2Small)) {
     changeLap(-1);
   }
-}
 
-void Ems22a::step() {
-  readPosition();
+  return prevPosition[0] + (lapNumber * encoderResolution);
 }

@@ -14,12 +14,10 @@ class Esp8266 {
     bool networkOpen = false;
     int resIdx = 0;
     char route[64];
-    char res[512];
-    char req[64];
-    char lastReqCmd[512];
-    char debugBuffer[512];
-
-    int _freq_hz = 20;
+    char res[128];
+    char req[128];
+    char lastReqCmd[64];
+    char debugBuffer[128];
 
     unsigned long commandSentOn = millis();
     unsigned long commandTimeout = 1500;
@@ -36,7 +34,7 @@ class Esp8266 {
     long dataLastReceived = 0;
 
     bool flagActuatorConfig = false;
-    char* actuatorCfg;
+    char* actuatorCfg = "\0";
     
     Esp8266 (HardwareSerial* serial) {
       ser = serial;
@@ -112,16 +110,17 @@ class Esp8266 {
       static char state[8];
       dtostrf(encoderAngle, 6, 4, state);
 
-      long dlr = millis() - dataLastReceived;
+      /*long dlr = millis() - dataLastReceived;
       if (dlr > 3000) {
-        Serial.println("Over 3 sec since data recv, restarting connection...");
         clear();
         configure();
         delay(2000);
-      }
+      } else if (dlr > 1000) {
+        clear();
+      }*/
 
       read();
-      if (millis() - lastStep > (1.0 / _freq_hz * 1000.0)) {
+      if (millis() - lastStep > 200) {
         printDebug("\r\n");
         lastStep = millis();
       
@@ -135,8 +134,7 @@ class Esp8266 {
         
         sprintf(req, "%s:%s;", actuatorId, state);
         if (flagActuatorConfig == true) {
-          sprintf(req, "%s%s", req, actuatorCfg);
-          flagActuatorConfig = false;
+          sprintf(req, "%s;%s;", req, actuatorCfg);
         }
         sprintf(req, "%s\r\n", req);
         
@@ -144,6 +142,7 @@ class Esp8266 {
         
         sprintf(debugBuffer, "%s\r\n", lastReqCmd);
         printDebug(debugBuffer);
+        flagActuatorConfig = false;
       }
     }
 
@@ -185,8 +184,9 @@ class Esp8266 {
           return "";
         }
 
-        if (resIdx < 512) {
-          res[resIdx++] = c;
+        if (resIdx < 126) {
+          res[resIdx] = c;
+          resIdx++;
         } else {
           resComplete = true;
         }
@@ -196,7 +196,8 @@ class Esp8266 {
         }
       }
 
-      res[resIdx++] = '\0';
+      res[resIdx] = '\0';
+      resIdx++;
         
       if (resIdx > 1) {
         if (strstr(res, "0,CLOSED")) {
@@ -389,7 +390,7 @@ class Esp8266 {
         return;
       }
 
-      char _req[64];
+      char _req[128];
       sprintf(_req, "%s", req);
       prepareSend(strlen(req));
       send(_req);
@@ -397,23 +398,12 @@ class Esp8266 {
       bool resComplete = false;
       while (resComplete == false) {
         char* res = read();
-
-        if (strstr(res, "cmd:nc;;")) {
-          resComplete = true;
-          dataLastReceived = millis();
-          break;
-        }
-        
         if (strstr(res, "cmd:") || strstr(res, "cfg:")) {
-    
-          //Serial.print(" <- ");
-          //Serial.println(res);
-        
           dataLastReceived = millis();
           int j = 0;
           bool foundColon = false;
           bool foundSemiColon = false;
-          for (int i = 0; i < strlen(res); i++) {
+          for (int i = 0; i < 64; i++) {
             if (foundColon == false) {
               if (res[i] == ':') {
                 foundColon = true;
@@ -425,7 +415,7 @@ class Esp8266 {
               } else {
                 lastReqCmd[j++] = res[i];
               }
-              if (res[i] == ';' && res[i + 1] == ';') {
+              if (res[i] == ';') {
                 foundSemiColon = true;
               }
             }
@@ -447,8 +437,8 @@ class Esp8266 {
         }
 
         if (millis() - commandSentOn > timeout) {
-          //tcpEnd();
-          //break;
+          tcpEnd();
+          break;
         }
       }
     }

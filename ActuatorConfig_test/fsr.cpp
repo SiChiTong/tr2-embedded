@@ -76,7 +76,7 @@ void FSR::setFilter(int filterMode) {
   mode = filterMode;
 }
 
-int FSR::getRead(bool noFilter = false) {
+int FSR::getRead(bool noFilter) {
   int reading = prevRead[0];
 
   if (noFilter == true) {

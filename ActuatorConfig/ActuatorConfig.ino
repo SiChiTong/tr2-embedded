@@ -3,7 +3,7 @@
 #include "ems22a.h"
 
 // User-Set Value
-int I2CBusAddress = 0x21;
+int I2CBusAddress = 0x00;
 float FSRThresholdCoef = 1.00;
 
 // EEPROM Addresses

@@ -1,5 +1,5 @@
 
-#define ACTUATOR_ID "a4"
+#define ACTUATOR_ID "a3"
 
 #define PI 3.1415926535897932384626433832795
 #define TAU (PI * 2)
@@ -36,9 +36,9 @@ int EmsTP3 = 5;
 
 double pidPos, pidOut, pidGoal = 0;
 double pidThreshold = 0.003;
-double pidMaxSpeed = 100;
-PID pid = PID(&pidPos, &pidOut, &pidGoal, 9.0, 5.0, 0.2, DIRECT);
-//PID pid = PID(&pidPos, &pidOut, &pidGoal, 8.5, 8.0, 1.2, DIRECT);
+int pidMaxSpeed = 100;
+//PID pid = PID(&pidPos, &pidOut, &pidGoal, 8.5, 7.0, 0.2, DIRECT);
+PID pid = PID(&pidPos, &pidOut, &pidGoal, 8.5, 7.0, 1.2, DIRECT);
 
 HardwareSerial Serial1(PA_10, PA_9);
 Esp8266 esp8266(&Serial1);
@@ -46,7 +46,6 @@ Motor motor;
 Ems22a ems22a;
 Ems22a ems22aT;
 
-long lastCfgSent = 0;
 uint8_t prevLap = 0;
 bool flipMotorPins = false;
 
@@ -74,8 +73,13 @@ void request (uint8_t packet[16]) {
     mode = msgMode;
 
     if (msgMode == MODE_SERVO) {
-      pidMaxSpeed = 100;
-      pidGoal = (double)getCurrentPosition();
+      double e_pos = (double)ems22a.getAngleRadians();
+      double e_trq = (double)ems22aT.getPosition();
+      if (e_trq > 510) e_trq = e_trq - 1020;
+      double t_dif = e_trq * 0.0980;
+      if (t_dif < 0) t_dif = e_trq * 0.0925;
+      double a_pos = e_pos + (t_dif / 360.0 * PI * 2);
+      pidGoal = a_pos;
     }
   } else if (packet[3] == CMD_SET_POS) {
     int param = packet[4] + packet[5] * 256;
@@ -83,9 +87,15 @@ void request (uint8_t packet[16]) {
     double pos = param / 65535.0 * TAU;
     pidGoal = formatAngle(pos);
   } else if (packet[3] == CMD_RESET_POS) {
-    ems22aT.setEqualTo(0.0);
-    ems22a.setEqualTo(0.0);
+    bool noOffset = true;
+    uint8_t encoderLap = 0;
+    uint16_t emsRead = ems22a.readPosition(noOffset);
+    uint16_t emsTrqRead = ems22aT.readPosition(noOffset);
     
+    ems22aT.setOffset(emsTrqRead);
+    ems22a.setOffset(emsRead);
+    ems22a.setLap(0);
+
     pidGoal = 0;
     pidOut = 0;
     pidPos = 0;
@@ -94,8 +104,7 @@ void request (uint8_t packet[16]) {
     char cfg[64];
     int fmc = 0;
     if (flipMotorPins == true) fmc = 1;
-    int p = floor(ems22a.getAngleRadians() / TAU * 65535.0);
-    sprintf(cfg, "%d,%d,%d,;", fmc, p, ems22aT.getOffset());
+    sprintf(cfg, "%d,%d,%d,%d,;", fmc, ems22a.getLap(), ems22a.getOffset(), ems22aT.getOffset());
     esp8266.flagActuatorConfig = true;
     esp8266.actuatorCfg = cfg;
   } else if (packet[3] == CMD_ROTATE) {
@@ -118,9 +127,6 @@ void request (uint8_t packet[16]) {
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting...");
-
-  Serial.print("Actuator ID: ");
-  Serial.println(ACTUATOR_ID);
 
   motor = Motor(0, MotorP1, MotorP2, MotorP3);
   motor.stop();
@@ -148,20 +154,29 @@ void setup() {
   esp8266.configure();
   
   delay(2000);
-    
+
   esp8266.getConfig(ACTUATOR_ID);
   parseConfig(esp8266.getLastCommand());
   prevLap = ems22a.getLap();
   pidGoal = (double)ems22a.getAngleRadians();
+
+  // this fills prev reads data for accurate lap estimation
+  ems22a.readPosition();
+  ems22a.readPosition();
 }
 
 void modeBackdrive() {
-  int e_trq = floor(ems22aT.getAngleRadians() / TAU * ems22aT.getMaxResolution());
+  Serial.print(ems22aT.getOffset());
+  Serial.print(", ");
+  Serial.print(ems22aT.readPosition(true));
+  Serial.print(", ");
+  int e_trq = ems22aT.getPosition();
+  Serial.println(e_trq);
   if (e_trq > 510) e_trq = e_trq - 1020;
   float t_dif = e_trq * 0.0980;
   if (t_dif < 0) t_dif = e_trq * 0.0925;
   
-  int m = t_dif * 100.0;
+  int m = t_dif * 35.0;
 
   if (m > 100) {
     m = 100;
@@ -175,8 +190,13 @@ void modeBackdrive() {
 }
 
 void modeServo() {
-  double pos = (double)getCurrentPosition();
-  pidPos = formatAngle(pos);
+  double e_pos = (double)ems22a.getAngleRadians();
+  double e_trq = (double)ems22aT.getPosition();
+  if (e_trq > 510) e_trq = e_trq - 1020;
+  double t_dif = e_trq * 0.0980;
+  if (t_dif < 0) t_dif = e_trq * 0.0925;
+  double a_pos = e_pos + (t_dif / 360.0 * PI * 2);
+  pidPos = formatAngle(a_pos);
 
   // ignore if within threshold of goal -- good 'nuff
   if (abs(pidPos - pidGoal) >= pidThreshold) {
@@ -256,82 +276,75 @@ void parseConfig(char* cfg) {
     motor = Motor(0, MotorP1, MotorP2, MotorP3);
   }
 
-  float pos = packet[1] / 65535.0 * TAU;
-  ems22a.setEqualTo(pos);
-
-  ems22aT.setOffset(packet[2]);
+  ems22a.setLap(packet[1]);
+  ems22a.setOffset(packet[2]);
+  ems22aT.setOffset(packet[3]);
 
   Serial.print("CFG: ");
   Serial.print(packet[0]);
   Serial.print(",");
-  Serial.print(packet[1]);
+  Serial.print(ems22a.getLap());
+  Serial.print(",");
+  Serial.print(ems22a.getOffset());
   Serial.print(",");
   Serial.println(ems22aT.getOffset());
   
 }
 
-void parseCommand(char* cmd) { 
+void parseCommand(char* cmd) {
   int bufIdx = 0;
   char buf[16];
   uint8_t packet[16];
   int packetIdx = 0;
 
   // no command
-  if (strstr(cmd, "nc;") || strlen(cmd) == 0) {
+  if (strstr(cmd, "nc;")) {
     return;
   }
 
   for (int i = 0; i < strlen(cmd); i++) {
     char c = cmd[i];
     if (c != ',') {
-      buf[bufIdx++] = c;
+      buf[bufIdx] = c;
+      bufIdx++;
     } else {
       buf[bufIdx] = '\0';
       bufIdx = 0;
-      packet[packetIdx++] = atoi(buf);
-    }
-    if (c == ';') {
-      request(packet);
-      packetIdx = 0;
-      bufIdx = 0;
+      packet[packetIdx] = atoi(buf);
+      packetIdx++;
     }
   }
-}
 
-float getCurrentPosition () {
-  float e_pos = ems22a.getAngleRadians();
-  int e_trq = floor(ems22aT.getAngleRadians() / TAU * ems22aT.getMaxResolution());
-  if (e_trq > 510) e_trq = e_trq - 1020;
-  float t_dif = e_trq * 0.0980;
-  if (t_dif < 0) t_dif = e_trq * 0.0925;
-  return e_pos + (t_dif / 360.0 * PI * 2);
+  request(packet);
 }
 
 void loop() {
   ems22a.step();
   ems22aT.step();
   
-  float pos = getCurrentPosition();
-  pos = formatAngle(pos);
+  float e_pos = ems22a.getAngleRadians();
+  int e_trq = ems22aT.getPosition();
+  if (e_trq > 510) e_trq = e_trq - 1020;
+  float t_dif = e_trq * 0.0980;
+  if (t_dif < 0) t_dif = e_trq * 0.0925;
+  float a_pos = e_pos + (t_dif / 360.0 * PI * 2);
 
-  if (millis() - lastCfgSent > 1000.0) {
+  if (prevLap != ems22a.getLap()) {
     char cfg[64];
     int fmc = 0;
     if (flipMotorPins == true) fmc = 1;
-    int p = floor(ems22a.getAngleRadians() / TAU * 65535.0);
-    sprintf(cfg, "%d,%i,%d,;", fmc, p, ems22aT.getOffset());
+    sprintf(cfg, "%d,%d,%d,%d,;", fmc, ems22a.getLap(), ems22a.getOffset(), ems22aT.getOffset());
     esp8266.flagActuatorConfig = true;
     esp8266.actuatorCfg = cfg;
-    lastCfgSent = millis();
   }
   
-  esp8266.step(ACTUATOR_ID, pos);
+  esp8266.step(ACTUATOR_ID, a_pos);
   parseCommand(esp8266.getLastCommand());
   esp8266.clearCmd();
-  
+
   if (stopEmergency == true) {
     motor.stop();
-    delay(50);
+    delay(500);
     return;
   }
 

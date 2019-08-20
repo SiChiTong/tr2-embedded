@@ -62,11 +62,11 @@ void Motor::backward(int speed = 100) {
   }
 }
 
-void Motor::step(int s = 100) {
-  if (s > 0) {
-    forward(abs(s));
-  } else if (s < 0) {
-    backward(abs(s));
+void Motor::step(int speed = 100) {
+  if (speed > 0) {
+    forward(abs(speed));
+  } else if (speed < 0) {
+    backward(abs(speed));
   } else {
     stop();
   }
@@ -96,9 +96,9 @@ void Motor::prepareCommand(int motorSpeed, int duration) {
   flagExecuteDuration = duration;
   flagExecuteExpiration = millis() + duration;
 
-  if (flagExecuteExpiration > millis() + 1000) {
-    flagExecuteExpiration = millis() + 1000;
-  }
+  //if (flagExecuteExpiration > millis() + 1000) {
+    //flagExecuteExpiration = millis() + 1000;
+  //}
 
   lastPreparedCommand[0] = motorSpeed;
   lastPreparedCommand[1] = duration;

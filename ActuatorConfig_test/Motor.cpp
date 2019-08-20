@@ -2,12 +2,13 @@
 #include "Motor.h"
 
 Motor::Motor() {
-
+  
 }
 
 Motor::Motor(int id, int pinEnable, int pinDrive1, int pinDrive2) {
   // motorSpeed set to a percentage of max voltage to pins
   this->motorSpeed = 0;
+  this->encoderTickCount = 0;
   this->id = id;
   this->pinEnable = pinEnable;
   this->pinDrive1 = pinDrive1;
@@ -18,21 +19,24 @@ Motor::~Motor() {
   this->stop();
 }
 
+void Motor::changeMotorDirection() {
+  int oldPinDrive1 = this->pinDrive1;
+  int oldPinDrive2 = this->pinDrive2;
+  this->pinDrive1 = oldPinDrive2;
+  this->pinDrive2 = oldPinDrive1;
+}
+
+void Motor::setPinSpeed() {
+  int pinStrength = int(255.0 * (motorSpeed / 100.0));
+  analogWrite(pinEnable, pinStrength);
+}
+
 void Motor::setUp() {
   pinMode(pinEnable, OUTPUT);
   pinMode(pinDrive1, OUTPUT);
   pinMode(pinDrive2, OUTPUT);
 
   setPinSpeed();
-}
-
-void Motor::setPinSpeed() {
-  if (motorSpeed > maxSpeed) {
-    motorSpeed = maxSpeed;
-  }
-  
-  int pinStrength = int(255.0 * (motorSpeed / 100.0));
-  analogWrite(pinEnable, pinStrength);
 }
 
 void Motor::forward(int speed = 100) {
@@ -47,6 +51,9 @@ void Motor::forward(int speed = 100) {
     digitalWrite(pinDrive1, HIGH);
     digitalWrite(pinDrive2, LOW);
   }
+
+  isMovingForward = true;
+  isMovingBackward = false;
 }
 
 void Motor::backward(int speed = 100) {
@@ -60,16 +67,25 @@ void Motor::backward(int speed = 100) {
     digitalWrite(pinDrive1, LOW);
     digitalWrite(pinDrive2, HIGH);
   }
+
+  isMovingForward = false;
+  isMovingBackward = true;
 }
 
-void Motor::step(int s = 100) {
-  if (s > 0) {
-    forward(abs(s));
-  } else if (s < 0) {
-    backward(abs(s));
+void Motor::step(int speed = 100) {
+  if (speed > 0) {
+    forward(abs(speed));
+  } else if (speed < 0) {
+    backward(abs(speed));
   } else {
     stop();
   }
+}
+
+void Motor::flipDrivePins() {
+  int pd1 = pinDrive1;
+  pinDrive1 = pinDrive2;
+  pinDrive2 = pd1;
 }
 
 void Motor::stop() {
@@ -77,6 +93,37 @@ void Motor::stop() {
   analogWrite(pinEnable, LOW);
   digitalWrite(pinDrive1, LOW);
   digitalWrite(pinDrive2, LOW);
+
+  isMovingForward = false;
+  isMovingBackward = false;
+}
+
+int Motor::getEncoderTickCount() {
+  return encoderTickCount;
+}
+
+int Motor::getPreviousEncoderTickCount() {
+  float result = previousEncoderTickCount;
+  previousEncoderTickCount = encoderTickCount;
+  return result;
+}
+
+int Motor::getEncoderTickCountDelta() {
+  float tickCount = getEncoderTickCount();
+  float tickCountPrevious = getPreviousEncoderTickCount();
+  return tickCount - tickCountPrevious;
+}
+
+void Motor::resetEncoderTickCount() {
+  encoderTickCount = 0;
+}
+
+void Motor::incrementEncoderTickCount() {
+  encoderTickCount++;
+}
+
+void Motor::decrementEncoderTickCount() {
+  encoderTickCount--;
 }
 
 bool Motor::isFlagged() {
@@ -95,11 +142,7 @@ void Motor::prepareCommand(int motorSpeed, int duration) {
   flagExecuteSpeed = motorSpeed;
   flagExecuteDuration = duration;
   flagExecuteExpiration = millis() + duration;
-
-  if (flagExecuteExpiration > millis() + 1000) {
-    flagExecuteExpiration = millis() + 1000;
-  }
-
+  
   lastPreparedCommand[0] = motorSpeed;
   lastPreparedCommand[1] = duration;
 }

@@ -16,7 +16,7 @@ class Motor {
     int motorDirection = 0;
     unsigned long flagExecuteExpiration = millis();
     void setPinSpeed();
-    int minSpeed = 0;
+    int minSpeed = 18;
   
   public:
     int id;

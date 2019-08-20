@@ -1,43 +1,53 @@
 #ifndef GRIPPER_H
 #define GRIPPER_H
 
-#include "AX12A.h"
+#define GRIPPER_CLOSED 0
+#define GRIPPER_OPEN 1
+
+#include "Motor.h"
 
 class Gripper {
   private:
-    unsigned int _directionPin = 10u;
-    unsigned long _baudRate = 1000000ul;
-    unsigned int _id = 1u;
-    int _speed = 100;
+    Motor _motor = Motor(1, 13, 11, 12);
+    int _state = GRIPPER_OPEN;
 
   public:
-    Gripper() { };
-    ~Gripper() { };
-
-    void setUp(HardwareSerial *ser) {
-      ax12a.begin(_baudRate, _directionPin, ser);
-      //ax12a.setEndless(_id, ON);
+    Gripper() {
     }
 
-    void setUp(SoftwareSerial *ser) {
-      ax12a.begin(_baudRate, _directionPin, ser);
-      //ax12a.setEndless(_id, ON);
+    void setUp() {
+      _motor.setUp();
     }
 
-    int read() {
-      return ax12a.readPosition(_id);
+    int getState() {
+      return _state;
+    }
+
+    void stop() {
+      _motor.stop();
+      delay(20);
+    }
+
+    void step() {
+      _motor.executePreparedCommand();
+    }
+
+    void toggle() {
+      if (_state == GRIPPER_OPEN) {
+        close();
+      } else {
+        open();
+      }
     }
 
     void open() {
-      ax12a.ledStatus(_id, OFF);
-      //ax12a.turn(_id, RIGHT, _speed);
-      ax12a.move(_id, 400);
+      _motor.prepareCommand(100, 10000);
+      _state = GRIPPER_OPEN;
     }
 
     void close() {
-      ax12a.ledStatus(_id, ON);
-      //ax12a.turn(_id, LEFT, _speed);
-      ax12a.move(_id, 725);
+      _motor.prepareCommand(-100, 10000);
+      _state = GRIPPER_CLOSED;
     }
 
     

@@ -11,32 +11,25 @@ class Esp8266 {
     int id, minId = 0;
     int maxId = 4;
     bool tcpOpen = false;
-    bool networkOpen = false;
     int resIdx = 0;
-    char route[64];
-    char res[512];
-    char req[64];
-    char lastReqCmd[512];
-    char debugBuffer[512];
+    char route[32];
+    char res[128];
+    char req[128];
+    char lastReqCmd[32];
+    char debugBuffer[128];
 
-    int _freq_hz = 20;
-
+    
     unsigned long commandSentOn = millis();
-    unsigned long commandTimeout = 1500;
+    unsigned long commandTimeout = 600;
     HardwareSerial* ser;
     HardwareSerial* serDebug;
     bool useDebugSerial = false;
 
   public:
     char* host = "192.168.4.1";
-    char* port = "1738";
+    char* port = "80";
     char* ssid;
     char* pass;
-
-    long dataLastReceived = 0;
-
-    bool flagActuatorConfig = false;
-    char* actuatorCfg;
     
     Esp8266 (HardwareSerial* serial) {
       ser = serial;
@@ -81,74 +74,24 @@ class Esp8266 {
       }
     }
 
-    void resetTimeout() {
-      lastStep = 0;
-    }
-
     void setTimeout(unsigned long t) {
       commandTimeout = t;
     }
 
-    void getConfig (char* actuatorId) {
-      printDebug("\r\n");
-      lastStep = millis();
-    
-      if (networkOpen == false) {
-        joinWifi();
-      }
-
-      if (tcpOpen == false) {
-        tcpStart();
-      }
-        
-      sprintf(req, "%s:?;\r\n", actuatorId);
-      tcpSend(5000);
-      
-      sprintf(debugBuffer, "%s\r\n", lastReqCmd);
-      printDebug(debugBuffer);
-    }
-    
     void step (char* actuatorId, float encoderAngle) {
       static char state[8];
       dtostrf(encoderAngle, 6, 4, state);
-
-      long dlr = millis() - dataLastReceived;
-      if (dlr > 3000) {
-        Serial.println("Over 3 sec since data recv, restarting connection...");
-        clear();
-        configure();
-        delay(2000);
-      }
-
+      sprintf(route, "/cmd/%s?s=%s", actuatorId, state);
       read();
-      if (millis() - lastStep > (1.0 / _freq_hz * 1000.0)) {
+      if (millis() - lastStep > 300) {
         printDebug("\r\n");
         lastStep = millis();
-      
-        if (networkOpen == false) {
-          joinWifi();
-        }
-
-        if (tcpOpen == false) {
-          tcpStart();
-        }
-        
-        sprintf(req, "%s:%s;", actuatorId, state);
-        if (flagActuatorConfig == true) {
-          sprintf(req, "%s%s", req, actuatorCfg);
-          flagActuatorConfig = false;
-        }
-        sprintf(req, "%s\r\n", req);
-        
-        tcpSend();
-        
+        tcpStart();
+        httpGET(route);
+        tcpEnd();
         sprintf(debugBuffer, "%s\r\n", lastReqCmd);
         printDebug(debugBuffer);
       }
-    }
-
-    void clear() {
-      tcpOpen = false;
     }
 
     bool available() {
@@ -185,8 +128,9 @@ class Esp8266 {
           return "";
         }
 
-        if (resIdx < 512) {
-          res[resIdx++] = c;
+        if (resIdx < 126) {
+          res[resIdx] = c;
+          resIdx++;
         } else {
           resComplete = true;
         }
@@ -196,19 +140,14 @@ class Esp8266 {
         }
       }
 
-      res[resIdx++] = '\0';
+      res[resIdx] = '\0';
+      resIdx++;
         
       if (resIdx > 1) {
         if (strstr(res, "0,CLOSED")) {
           tcpOpen = false;
         } else if (strstr(res, "0,CONNECT")) {
           tcpOpen = true;
-        }
-
-        if (strstr(res, "WIFI CONNECTED")) {
-          networkOpen = false;
-        } else if (strstr(res, "WIFI DISCONNECT") || strstr(res, "no ip")) {
-          networkOpen = false;
         }
         
         sprintf(debugBuffer, "RES <- %s", res);
@@ -266,10 +205,9 @@ class Esp8266 {
         char* res = read();
         if (strstr(res, ESP_RES_OK)) {
           resComplete = true;
-          networkOpen = true;
         }
 
-        if (millis() - commandSentOn > 20000) { // 10 sec delay
+        if (millis() - commandSentOn > 10000) { // 10 sec delay
           reset();
           joinWifi();
           resComplete = true;
@@ -292,11 +230,6 @@ class Esp8266 {
 
     void tcpStart() {
       sprintf(req, "AT+CIPSTART=0,\"TCP\",\"%s\",%s\r\n", host, port);
-      
-      if (networkOpen == false) {
-        joinWifi();
-      }
-        
       if (tcpOpen == false) {
         send(req);
       } else {
@@ -320,11 +253,6 @@ class Esp8266 {
 
     void tcpEnd() {
       sprintf(req, "AT+CIPCLOSE=0\r\n");
-
-      if (networkOpen == false) {
-        return;
-      }
-      
       if (tcpOpen == true) {
         send(req);
       } else {
@@ -347,12 +275,12 @@ class Esp8266 {
     }
 
     void prepareSend(int len) {
-      if (!networkOpen || !tcpOpen) {
+      sprintf(req, "AT+CIPSEND=0,%i\r\n", len);
+      if (tcpOpen == true) {
+        send(req);
+      } else {
         return;
       }
-      
-      sprintf(req, "AT+CIPSEND=0,%i\r\n", len);
-      send(req);
 
       bool resComplete = false;
       while (resComplete == false) {
@@ -374,64 +302,25 @@ class Esp8266 {
       }
     }
 
-    void clearCmd() {
-      for (int i = 0; i < 64; i++) {
-        lastReqCmd[i] = '\0';
-      }
-    }
+    void httpGET (char* route) {
+      sprintf(req, ESP_REQ_HTTP, route, host);
+      prepareSend(strlen(req));
 
-    void tcpSend (long timeout = 0) {
-      if (timeout == 0) {
-        timeout = commandTimeout;
-      }
-      
-      if (!networkOpen || !tcpOpen) {
+      sprintf(req, ESP_REQ_HTTP, route, host);
+      if (tcpOpen == true) {
+        send(req);
+      } else {
+        lastReqCmd[0] = '\0';
         return;
       }
-
-      char _req[64];
-      sprintf(_req, "%s", req);
-      prepareSend(strlen(req));
-      send(_req);
       
       bool resComplete = false;
       while (resComplete == false) {
         char* res = read();
-
-        if (strstr(res, "cmd:nc;;")) {
-          resComplete = true;
-          dataLastReceived = millis();
-          break;
-        }
-        
-        if (strstr(res, "cmd:") || strstr(res, "cfg:")) {
-    
-          //Serial.print(" <- ");
-          //Serial.println(res);
-        
-          dataLastReceived = millis();
-          int j = 0;
-          bool foundColon = false;
-          bool foundSemiColon = false;
-          for (int i = 0; i < strlen(res); i++) {
-            if (foundColon == false) {
-              if (res[i] == ':') {
-                foundColon = true;
-              }
-            } else if (foundSemiColon == false) {
-              if (res[i] == ':') {
-                lastReqCmd[0] = '\0';
-                j = 0;
-              } else {
-                lastReqCmd[j++] = res[i];
-              }
-              if (res[i] == ';' && res[i + 1] == ';') {
-                foundSemiColon = true;
-              }
-            }
+        if (strstr(res, ";")) {
+          for (int i = 0; i < 32; i++) {
+            lastReqCmd[i] = res[i];
           }
-          
-          lastReqCmd[j++] = '\0';
           resComplete = true;
         } else if (strstr(res, "SEND FAIL")) {
           lastStep = 0;
@@ -446,9 +335,8 @@ class Esp8266 {
           return;
         }
 
-        if (millis() - commandSentOn > timeout) {
-          //tcpEnd();
-          //break;
+        if (millis() - commandSentOn > commandTimeout) {
+          break;
         }
       }
     }

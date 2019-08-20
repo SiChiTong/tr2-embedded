@@ -33,16 +33,11 @@ void Ems22a::setOffset(int pos) {
   offset = pos;
 }
 
-float Ems22a::readDegree(bool reverseAngle) {
-  int pos = readPosition(reverseAngle);
-  return ((pos + 1.0) / 1024.0) * 360.0;
-}
-
 
 int Ems22a::readPosition(bool noOffset) {
   digitalWrite(PIN_CS, HIGH);
   digitalWrite(PIN_CS, LOW);
-  int16_t pos = 0;
+  int pos = 0;
   for (int i=0; i<10; i++) {
     digitalWrite(PIN_CLOCK, LOW);
     digitalWrite(PIN_CLOCK, HIGH);
@@ -99,12 +94,6 @@ void Ems22a::changeLap(int i) {
   }
 
   EEPROM.write(1, lapNumber);
-}
-
-float Ems22a::getAngleDegrees() {
-  float pos = prevPosition[0] + (lapNumber * encoderResolution);
-  float maxPos = maxLap * encoderResolution;
-  return 360.0 *  pos / maxPos;
 }
 
 float Ems22a::getAngleRadians() {

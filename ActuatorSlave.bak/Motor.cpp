@@ -27,10 +27,6 @@ void Motor::setUp() {
 }
 
 void Motor::setPinSpeed() {
-  if (motorSpeed > maxSpeed) {
-    motorSpeed = maxSpeed;
-  }
-  
   int pinStrength = int(255.0 * (motorSpeed / 100.0));
   analogWrite(pinEnable, pinStrength);
 }
@@ -62,11 +58,11 @@ void Motor::backward(int speed = 100) {
   }
 }
 
-void Motor::step(int s = 100) {
-  if (s > 0) {
-    forward(abs(s));
-  } else if (s < 0) {
-    backward(abs(s));
+void Motor::step(int speed = 100) {
+  if (speed > 0) {
+    forward(abs(speed));
+  } else if (speed < 0) {
+    backward(abs(speed));
   } else {
     stop();
   }

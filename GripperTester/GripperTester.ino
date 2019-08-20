@@ -20,12 +20,13 @@
 #define MODE_BACKDRIVE 0x11
 #define MODE_ROTATE 0x12
 
-int btnPin = 5;
+int btnPin = 11;
 
 HardwareSerial Serial1(0, 1);
 Esp8266 esp8266(&Serial1);
 
-Gripper gripper;
+HardwareSerial gs(4, 13);
+Gripper gripper(&Serial2);
 
 int mode = MODE_ROTATE;
 bool stopSoft = false;
@@ -43,10 +44,11 @@ void request (uint8_t packet[16]) {
     mode = msgMode;
   } else if (packet[3] == CMD_SET_POS) {
     int param = packet[4] + packet[5] * 256;
-    if (param >= 1) {
-      gripper.open();
-    } else {
+    double pos = param / 65535.0 * TAU;
+    if (pos < PI) {
       gripper.close();
+    } else {
+      gripper.open();
     }
   } else if (packet[3] == CMD_RESET_POS) {
 
@@ -61,16 +63,15 @@ void request (uint8_t packet[16]) {
   
 void setup () {
   Serial.begin(115200);
-  Serial.println("Starting...");
+  //Serial.println("Starting...");
   
   pinMode(btnPin, INPUT_PULLDOWN);
   
   gripper.setUp();
-  gripper.stop();
 
   esp8266.ssid = "TR2_AN_123132321";
   esp8266.pass = "ALLEN65802";
-  esp8266.setDebugSerial(&Serial);
+  //esp8266.setDebugSerial(&Serial);
   esp8266.setTimeout(600);
   esp8266.begin();
   esp8266.configure();
@@ -106,15 +107,14 @@ void parseCommand(char* cmd) {
 
 long lastRead = 0;
 void loop () {
-  gripper.step();
-  
   esp8266.step(ACTUATOR_ID, gripper.getState());
   parseCommand(esp8266.getLastCommand());
   esp8266.clearCmd();
   
-  //5, 4, 3, 2
+  //11, 9, 6, 3
   int btnPressed = digitalRead(btnPin);
   if (btnPressed && (millis() - lastRead) > 250) {
+    //Serial.println(btnPressed);
     gripper.toggle();
     lastRead = millis();
   }
