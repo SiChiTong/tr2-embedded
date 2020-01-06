@@ -1,5 +1,8 @@
 
-#define ACTUATOR_ID "a4"
+#define ACTUATOR_ID "a0"
+
+#define TR2_AN_SSID "TR2_AN_111222333"
+#define TR2_AN_PASS "MATHI78741"
 
 #define PI 3.1415926535897932384626433832795
 #define TAU (PI * 2)
@@ -16,6 +19,7 @@
 #define CMD_RETURN_STATUS 0x14
 #define CMD_STOP_RELEASE 0x15
 #define CMD_STOP_EMERGENCY 0x16
+#define CMD_FLIP_MOTOR 0x17
 
 #define MODE_SERVO 0x10
 #define MODE_BACKDRIVE 0x11
@@ -98,6 +102,24 @@ void request (uint8_t packet[16]) {
     sprintf(cfg, "%d,%d,%d,;", fmc, p, ems22aT.getOffset());
     esp8266.flagActuatorConfig = true;
     esp8266.actuatorCfg = cfg;
+  } else if (packet[3] == CMD_FLIP_MOTOR) {
+    int fmc = 0;
+    if (flipMotorPins == true) {
+      fmc = 0;
+      motor = Motor(0, MotorP1, MotorP2, MotorP3);
+      flipMotorPins = false;
+    } else {
+      fmc = 1;
+      motor = Motor(0, MotorP1, MotorP3, MotorP2);
+      flipMotorPins = true;
+    }
+    
+    char cfg[64];
+    int p = floor(ems22a.getAngleRadians() / TAU * 65535.0);
+    sprintf(cfg, "%d,%i,%d,;", fmc, p, ems22aT.getOffset());
+    esp8266.flagActuatorConfig = true;
+    esp8266.actuatorCfg = cfg;
+    lastCfgSent = millis();
   } else if (packet[3] == CMD_ROTATE) {
     int offsetBinary = 128;
     int motorStep = packet[4] - offsetBinary;
@@ -140,8 +162,8 @@ void setup() {
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-1, 1);
 
-  esp8266.ssid = "TR2_AN_123132321";
-  esp8266.pass = "ALLEN65802";
+  esp8266.ssid = TR2_AN_SSID;
+  esp8266.pass = TR2_AN_PASS;
   //esp8266.setDebugSerial(&Serial);
   esp8266.setTimeout(600);
   esp8266.begin();

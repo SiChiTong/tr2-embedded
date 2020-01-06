@@ -57,7 +57,7 @@ void setup() {
   ems22aT.setOffset(encMid);
   ems22aT.step();
 
-  //config();
+  config();
 
   Serial.println("Ready...");
 }
@@ -158,9 +158,9 @@ void loop() {
   if (t_dif < 0) t_dif = e_trq * 0.0925;
   float a_pos = (e_pos / 1020.0 * PI * 2.0) + (t_dif / 360.0 * PI * 2);
   
-  Serial.print(ems22a.readPosition());
+  Serial.print(ems22a.readPosition(true));
   Serial.print(", ");
-  Serial.print(ems22aT.readPosition());
+  Serial.print(ems22aT.readPosition(true));
   Serial.print(", ");
   Serial.print(t_dif);
   Serial.print(", ");

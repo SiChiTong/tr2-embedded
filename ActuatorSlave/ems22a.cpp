@@ -102,10 +102,6 @@ void Ems22a::setEqualTo(float posSet) {
       lap -= maxLap;
   }
 
-  Serial.print(offset);
-  Serial.print(", ");
-  Serial.println(lap);
-
   setOffset(offset);
   setLap(lap);
   

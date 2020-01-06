@@ -1,6 +1,9 @@
 
 #define ACTUATOR_ID "g0"
 
+#define TR2_AN_SSID "TR2_AN_111222333"
+#define TR2_AN_PASS "MATHI78741"
+
 #define PI 3.1415926535897932384626433832795
 #define TAU (PI * 2)
 
@@ -68,8 +71,8 @@ void setup () {
   gripper.setUp();
   gripper.stop();
 
-  esp8266.ssid = "TR2_AN_123132321";
-  esp8266.pass = "ALLEN65802";
+  esp8266.ssid = TR2_AN_SSID;
+  esp8266.pass = TR2_AN_PASS;
   esp8266.setDebugSerial(&Serial);
   esp8266.setTimeout(600);
   esp8266.begin();
