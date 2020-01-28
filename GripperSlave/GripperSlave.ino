@@ -25,7 +25,7 @@
 
 int btnPin = 5;
 
-HardwareSerial Serial1(0, 1);
+HardwareSerial Serial1((uint32_t)0, (uint32_t)1);
 Esp8266 esp8266(&Serial1);
 
 Gripper gripper;
