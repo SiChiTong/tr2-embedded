@@ -30,7 +30,7 @@ void Motor::setPinSpeed() {
   if (motorSpeed > maxSpeed) {
     motorSpeed = maxSpeed;
   }
-  
+
   int pinStrength = int(255.0 * (motorSpeed / 100.0));
   analogWrite(pinEnable, pinStrength);
 }
@@ -97,7 +97,7 @@ void Motor::prepareCommand(int motorSpeed, int duration) {
   flagExecuteExpiration = millis() + duration;
 
   //if (flagExecuteExpiration > millis() + 1000) {
-    //flagExecuteExpiration = millis() + 1000;
+  //flagExecuteExpiration = millis() + 1000;
   //}
 
   lastPreparedCommand[0] = motorSpeed;

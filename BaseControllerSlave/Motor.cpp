@@ -1,6 +1,10 @@
 #include <Arduino.h>
 #include "Motor.h"
 
+Motor::Motor() {
+  
+}
+
 Motor::Motor(int id, int pinEnable, int pinDrive1, int pinDrive2) {
   // motorSpeed set to a percentage of max voltage to pins
   this->motorSpeed = 0;
@@ -13,6 +17,13 @@ Motor::Motor(int id, int pinEnable, int pinDrive1, int pinDrive2) {
 
 Motor::~Motor() {
   this->stop();
+}
+
+void Motor::changeMotorDirection() {
+  int oldPinDrive1 = this->pinDrive1;
+  int oldPinDrive2 = this->pinDrive2;
+  this->pinDrive1 = oldPinDrive2;
+  this->pinDrive2 = oldPinDrive1;
 }
 
 void Motor::setPinSpeed() {
@@ -31,7 +42,7 @@ void Motor::setUp() {
 void Motor::forward(int speed = 100) {
   // given speed should be a percentage of total speed so that we can tell it to start slowly
   this->motorSpeed = speed;
-  if (speed < 20) {
+  if (speed < minSpeed) {
     analogWrite(pinEnable, LOW);
     digitalWrite(pinDrive1, LOW);
     digitalWrite(pinDrive2, LOW);
@@ -47,7 +58,7 @@ void Motor::forward(int speed = 100) {
 
 void Motor::backward(int speed = 100) {
   this->motorSpeed = speed;
-  if (speed < 20) {
+  if (speed < minSpeed) {
     analogWrite(pinEnable, LOW);
     digitalWrite(pinDrive1, LOW);
     digitalWrite(pinDrive2, LOW);
@@ -113,11 +124,21 @@ bool Motor::isFlagged() {
   return flagExecute;
 }
 
+void Motor::clearPreparedCommand() {
+  flagExecute = false;
+  flagExecuteSpeed = 0;
+  flagExecuteDuration = 0;
+  flagExecuteExpiration = millis() - 2000;
+}
+
 void Motor::prepareCommand(int motorSpeed, int duration) {
   flagExecute = true;
   flagExecuteSpeed = motorSpeed;
   flagExecuteDuration = duration;
   flagExecuteExpiration = millis() + duration;
+  
+  lastPreparedCommand[0] = motorSpeed;
+  lastPreparedCommand[1] = duration;
 }
 
 void Motor::executePreparedCommand() {
@@ -131,3 +152,7 @@ void Motor::executePreparedCommand() {
   }
 }
 
+void Motor::getLastMotorCommand(int *cmd) {
+  cmd[0] = lastPreparedCommand[0];
+  cmd[1] = lastPreparedCommand[1];
+}
